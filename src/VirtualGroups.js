@@ -216,6 +216,10 @@ module.exports = {
   async Enemy (user, groupid, DiscordServer) {
     return module.exports._Relationship(user, groupid, DiscordServer, 'enemies')
   },
+  
+  async AllyAge (user, groupid, DiscordServer) {
+    return module.exports._Relationship(user, groupid, DiscordServer, 'allies') && await module.exports.AccountAge(user, 14)
+  },
 
   /**
    * Returns true if a given user is friends with a given user.
@@ -242,6 +246,54 @@ module.exports = {
     }
 
     return false
+  },
+  
+  async _joinDate(userId) {
+	try {
+		return JSON.parse(await request(`https://users.roblox.com/v1/users/${userId}`)).created
+	} catch (e) {
+		console.log(`Failed to get join date of ${userId}\n${e}`)
+	}
+	
+	return new Date().getTime()
+  },
+
+  /**
+   * Returns true if a given user is at least a specified account age.
+   * @param {object} user The user to check
+   * @param {number} minage The minimum account age
+   * @returns {boolean} True if user is at least the specified account age
+   */
+  async AccountAge (user, minage) {
+    try {
+      let AccountAge = await Cache.get(`bindings.${user.id}`, 'AccountAge')
+      if (!AccountAge) {
+        AccountAge = new Date(await module.exports._joinDate(user.id)).getTime()
+        Cache.set(`bindings.${user.id}`, 'AccountAge', AccountAge)
+      }
+      return new Date().getTime() - AccountAge >= 1000 * minage * 24 * 60 * 60
+    } catch (e) {
+      console.log(e)
+    }
+	
+    return false
+  },
+  
+  async AccountAgeAndGroup(user, minage, DiscordServer, groupid) {
+    try {
+		let apiRank = await DiscordServer.getRobloxMemberGroups(user.id)
+		for (const groups of apiRank) {
+			if (parseInt(groups.Id) === groupid) {
+			  apiRank = true
+			  break
+			}
+		}
+		return await module.exports.AccountAge(user, minage) && apiRank == true
+    } catch (e) {
+      console.log(e)
+    }
+	
+	return false
   },
 
   /**
