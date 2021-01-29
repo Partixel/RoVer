@@ -18,7 +18,12 @@ const DefaultSettings = {
   announceChannel: null,
   nicknameFormat: '%USERNAME%',
   welcomeMessage: 'Welcome to %SERVER%, %USERNAME%!',
-  groupRankBindings: []
+  groupRankBindings: [],
+  roleFailedMessage: null,
+  roleAwardedMessage: null,
+  rankNicknames: {},
+  allyNicknames: {},
+  requiredRoles: {},
 }
 
 /**
@@ -226,7 +231,7 @@ class DiscordServer {
    * @returns {boolean} The group binding resolution
    * @memberof DiscordServer
    */
-  static async resolveGroupRankBinding (binding, userid, username) {
+  static async resolveGroupRankBinding (binding, userid, username, nicknameGroup) {
     if (binding.group != null) {
       binding = this.convertOldBinding(binding)
     }
@@ -244,7 +249,7 @@ class DiscordServer {
 
     for (const group of binding.groups) {
       if (VirtualGroups[group.id]) {
-        returnValue = await VirtualGroups[group.id]({ id: userid, username }, group.ranks[0], DiscordServer)
+        returnValue = await VirtualGroups[group.id]({ id: userid, username }, group.ranks[0], DiscordServer, nicknameGroup)
 
         if (returnValue) break
       } else {
@@ -370,6 +375,18 @@ class DiscordServer {
         } catch (e) {}
       }
     }
+  }
+  
+  getRoleFailedMessage (data, member) {
+	  let Msg = this.getSetting('roleFailedMessage')
+	  if (Msg)
+		return Util.formatDataString(Msg, data, member)
+  }
+
+  getRoleAwardedMessage (data, member) {
+	  let Msg = this.getSetting('roleAwardedMessage')
+	  if (Msg)
+		return Util.formatDataString(Msg, data, member)
   }
 
   /**

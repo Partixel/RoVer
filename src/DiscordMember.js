@@ -99,13 +99,69 @@ class DiscordMember {
 
       for (const groups of apiRank) {
         if (parseInt(groups.group.id) === parseInt(this.discordServer.getSetting('nicknameGroup'))) {
-          const rankMatch = groups.role.name.match(/(.+(?:\]|\)|\}|\|))/)
-          nicknameData.groupRank = rankMatch ? rankMatch[1] : `[${groups.role.name}]`
+          
+		  
+		  if (rankNicknames[groups.Rank]){
+			  if (rankNicknames[groups.Rank] != "false")
+				nicknameData.groupRank = `[${rankNicknames[groups.Rank]}]`
+		  } else {
+			  const rankMatch = groups.role.name.match(/(.+(?:\]|\)|\}|\|))/)
+              nicknameData.groupRank = rankMatch ? rankMatch[1] : `[${groups.role.name}]`
+		  }
           break
         }
       }
-      nicknameData.groupRank = nicknameData.groupRank || '[Guest]'
     }
+	
+	if (!nicknameData.groupRank) {
+		const allyNicknames = this.discordServer.getSetting('allyNicknames')
+		const userGroups = await DiscordServer.getRobloxMemberGroups(nicknameData.robloxId)
+		const relation = "allies"
+
+		// Important to cache group relationships, as this is an expensive operation
+		let allies = await Cache.get(`groups.${nicknameGroup}`, relation)
+		if (allies == null) {
+		  allies = []
+		  // Roblox ally/enemy APIs are paginated, only get a max of 10 pages
+		  let page = 1
+		  while (page < 10) {
+			const content = await request(`https://api.roblox.com/groups/${nicknameGroup}/${relation}?page=${page}`, {
+			  json: true
+			})
+
+			for (const group of content.Groups) {
+			  allies.push(group.Id)
+			}
+
+			if (content.FinalPage) {
+			  break
+			} else {
+			  page++
+			}
+		  }
+
+		  Cache.set(`groups.${nicknameGroup}`, relation, allies)
+		}
+		
+		let inAllies = []
+		for (const group of userGroups) {
+		  if (allies.includes(group.Id)) {
+			  if (allyNicknames[group.Id]){
+				  inAllies.push(allyNicknames[group.Id])
+			  } else {
+				  inAllies.push("ALLY")
+			  }
+		  }
+		} 
+		
+		if (inAllies.length > 0) {
+			console.log(inAllies.join(", "))
+			nicknameData.groupRank = "[" + inAllies.join(", ") + "]"
+		}
+
+		nicknameData.groupRank = nicknameData.groupRank || ("[" + rankNicknames[0] + "]") || '[Guest]'
+    }
+	
     return Util.formatDataString(this.discordServer.getSetting('nicknameFormat'), nicknameData, this.member)
   }
 
@@ -209,12 +265,53 @@ class DiscordMember {
           } else if (action.error != null) {
             statusMessage.edit(`${this.member}, :exclamation:${action.error.startsWith(':') ? '' : ' '}${action.error}`)
           } else if (action.status === true) {
-            let welcomeMessage = this.discordServer.getWelcomeMessage(action, this.member)
-            if (options.skipWelcomeMessage) {
-              welcomeMessage = `${this.member.displayName} has been verified.`
-            }
+			let Awarded = false
+			  console.log(this.member.displayName)
+			  for (const roleid of Object.keys(this.discordServer.getSetting('requiredRoles'))) {
+				  const role = await this.server.roles.fetch(roleid)
+				  console.log(role.name, roleid, this.member.roles.has(roleid))
+				  if (this.member.roles.has(roleid) && this.server.roles.has(roleid)){
+					Awarded = true
+					break
+				  }
+				}
+			  if (Awarded === true) {
+					let Msg = this.discordServer.getRoleAwardedMessage(action, this.member)
+					if (Msg){
+						statusMessage.edit(`${options.message.author}, :white_check_mark: ${Msg}`)
+						
+						if (this.member.user.id == options.message.author.id)
+							this.member.send(Msg).catch((e) => {console.log(e)})
+					} else {
+						let welcomeMessage = this.discordServer.getWelcomeMessage(action, this.member)
+						if (options.skipWelcomeMessage) {
+						  welcomeMessage = `${this.member.displayName} has been verified.`
+						}
 
-            statusMessage.edit(`${options.message.author}, :white_check_mark: ${welcomeMessage}`)
+						statusMessage.edit(`${options.message.author}, :white_check_mark: ${welcomeMessage}`)
+					}
+			  } else {
+					  if (this.discordServer.getSetting('verifiedRemovedRole')) {
+						try {
+						  await this.member.roles.add(this.discordServer.getSetting('verifiedRemovedRole'))
+						} catch (e) {}
+					  }
+					  
+					let Msg = this.discordServer.getRoleFailedMessage(action, this.member)
+					if (Msg){
+						statusMessage.edit(`${options.message.author}, :exclamation: ${Msg}`)
+						
+						if (this.member.user.id == options.message.author.id)
+							this.member.send(Msg).catch((e) => {console.log(e)})
+					} else {
+						let welcomeMessage = this.discordServer.getWelcomeMessage(action, this.member)
+						if (options.skipWelcomeMessage) {
+						  welcomeMessage = `${this.member.displayName} has been verified.`
+						}
+
+						statusMessage.edit(`${options.message.author}, :white_check_mark: ${welcomeMessage}`)
+					}
+			  }
           }
         })()
 
@@ -396,7 +493,7 @@ class DiscordMember {
         const promises = []
         for (const binding of this.discordServer.getSetting('groupRankBindings')) {
           // We use a Promise.then here so that they all execute asynchronously.
-          promises.push(DiscordServer.resolveGroupRankBinding(binding, data.robloxId, data.robloxUsername)
+          promises.push(DiscordServer.resolveGroupRankBinding(binding, data.robloxId, data.robloxUsername, parseInt(this.discordServer.getSetting('nicknameGroup')))
             .then((state) => {
               const hasRole = this.member.roles.cache.get(binding.role) != null
               if (hasRole === state) return
