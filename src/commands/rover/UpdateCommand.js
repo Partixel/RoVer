@@ -3,7 +3,7 @@ const DiscordServer = require('../../DiscordServer')
 const { Role } = require('discord.js')
 const config = require('../../data/client.json')
 
-async function recursiveUpdate (memberArray, server, msg, errors) {
+async function recursiveUpdate (memberArray, server, msg, errors, status, affectedCount) {
   const nextMember = memberArray.pop()
   if (!nextMember) {
     let errorText = ''
@@ -26,9 +26,10 @@ async function recursiveUpdate (memberArray, server, msg, errors) {
       }
 
       server.bulkUpdateCount++
+	  status.edit(`${msg.author}, :hourglass_flowing_sand: Updating ${server.bulkUpdateCount}/${affectedCount} members. We'll let you know when we're done.`)
     }
   }
-  return recursiveUpdate(memberArray, server, msg, errors)
+  return recursiveUpdate(memberArray, server, msg, errors, status, affectedCount)
 }
 
 async function returnMembersOfRole(role) {
@@ -93,9 +94,9 @@ class UpdateCommand extends Command {
       }
 
       server.ongoingBulkUpdate = true
-      msg.reply(`:hourglass_flowing_sand: Updating ${affectedCount} members. We'll let you know when we're done.`)
+      const status = await msg.reply(`:hourglass_flowing_sand: Updating ${affectedCount} members. We'll let you know when we're done.`)
 
-      recursiveUpdate(roleMembers, server, msg, [])
+      recursiveUpdate(roleMembers, server, msg, [], status, affectedCount)
     }
   }
 }
