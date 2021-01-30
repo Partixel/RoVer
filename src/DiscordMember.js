@@ -93,15 +93,19 @@ class DiscordMember {
       discordId: data.discordId,
       discordName: data.discordName
     }
-
-    if (this.discordServer.getSetting('nicknameGroup')) {
+	
+	let nicknameGroup = this.discordServer.getSetting('nicknameGroup')
+	const rankNicknames = this.discordServer.getSetting('rankNicknames')
+	
+    if (nicknameGroup) {
       const apiRank = await DiscordServer.getRobloxMemberGroups(nicknameData.robloxId)
+	  nicknameGroup = parseInt(nicknameGroup)
 
       for (const groups of apiRank) {
-        if (parseInt(groups.group.id) === parseInt(this.discordServer.getSetting('nicknameGroup'))) {
+        if (parseInt(groups.group.id) === nicknameGroup) {
           
 		  
-		  if (rankNicknames[groups.Rank]){
+		  if (rankNicknames && rankNicknames[groups.Rank]){
 			  if (rankNicknames[groups.Rank] != "false")
 				nicknameData.groupRank = `[${rankNicknames[groups.Rank]}]`
 		  } else {
@@ -113,31 +117,22 @@ class DiscordMember {
       }
     }
 	
-	if (!nicknameData.groupRank) {
+	if (!nicknameData.groupRank && nicknameGroup) {
 		const allyNicknames = this.discordServer.getSetting('allyNicknames')
 		const userGroups = await DiscordServer.getRobloxMemberGroups(nicknameData.robloxId)
 		const relation = "allies"
 
-		// Important to cache group relationships, as this is an expensive operation
 		let allies = await Cache.get(`groups.${nicknameGroup}`, relation)
 		if (allies == null) {
 		  allies = []
-		  // Roblox ally/enemy APIs are paginated, only get a max of 10 pages
-		  let page = 1
-		  while (page < 10) {
-			const content = await request(`https://api.roblox.com/groups/${nicknameGroup}/${relation}?page=${page}`, {
-			  json: true
-			})
 
-			for (const group of content.Groups) {
-			  allies.push(group.Id)
-			}
+		  // Roblox ally/enemy APIs must specify an amount. Only grab 60 relationships
+		  const content = await request(`https://groups.roblox.com/v1/groups/${nicknameGroup}/relationships/${relation}?model.startRowIndex=0&model.maxRows=60`, {
+			json: true
+		  })
 
-			if (content.FinalPage) {
-			  break
-			} else {
-			  page++
-			}
+		  for (const group of content.relatedGroups) {
+			allies.push(group.id)
 		  }
 
 		  Cache.set(`groups.${nicknameGroup}`, relation, allies)
@@ -267,10 +262,11 @@ class DiscordMember {
           } else if (action.status === true) {
 			let Awarded = false
 			  console.log(this.member.displayName)
+			  console.log(action.awarded)
 			  for (const roleid of Object.keys(this.discordServer.getSetting('requiredRoles'))) {
 				  const role = await this.server.roles.fetch(roleid)
-				  console.log(role.name, roleid, this.member.roles.has(roleid))
-				  if (this.member.roles.has(roleid) && this.server.roles.has(roleid)){
+				  console.log(role.name, roleid, this.member.roles.cache.has(roleid))
+				  if (action.awarded.includes(roleid) && this.server.roles.cache.has(roleid)){
 					Awarded = true
 					break
 				  }
@@ -484,6 +480,7 @@ class DiscordMember {
         await Cache.clear(`bindings.${data.robloxId}`)
       }
 
+		let Awarded = []
       // Resolve group rank bindings for this member.
       if (this.discordServer.getSetting('groupRankBindings').length > 0) {
         status(':mag_right: Checking group ranks...')
@@ -496,13 +493,19 @@ class DiscordMember {
           promises.push(DiscordServer.resolveGroupRankBinding(binding, data.robloxId, data.robloxUsername, parseInt(this.discordServer.getSetting('nicknameGroup')))
             .then((state) => {
               const hasRole = this.member.roles.cache.get(binding.role) != null
-              if (hasRole === state) return
+              if (hasRole === state) {
+				  console.log(binding.role)
+				  Awarded.push(binding.role)
+				  return
+			  }
 
               if (!this.server.roles.cache.has(binding.role)) return
 
               if (!this.discordServer.canManageRole(binding.role)) return
 
               if (state === true) {
+				  console.log(binding.role)
+				Awarded.push(binding.role)
                 this.member.roles.add(binding.role).catch(e => {})
               } else {
                 this.member.roles.remove(binding.role).catch(e => {})
@@ -527,6 +530,7 @@ class DiscordMember {
       VerificationAttempts.delete(this.id)
 
       return status({
+		awarded: Awarded,
         status: true,
         robloxUsername: data.robloxUsername,
         robloxId: data.robloxId,

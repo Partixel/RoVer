@@ -281,14 +281,14 @@ module.exports = {
   
   async AccountAgeAndGroup(user, minage, DiscordServer, groupid) {
     try {
-		let apiRank = await DiscordServer.getRobloxMemberGroups(user.id)
-		for (const groups of apiRank) {
-			if (parseInt(groups.Id) === groupid) {
-			  apiRank = true
-			  break
+		if (await module.exports.AccountAge(user, minage)) {
+			const groups = await DiscordServer.getRobloxMemberGroups(user.id)
+			for (const groupObj of groups) {
+			  if (groupObj.group.id === groupid) {
+				return true
+			  }
 			}
 		}
-		return await module.exports.AccountAge(user, minage) && apiRank == true
     } catch (e) {
       console.log(e)
     }
